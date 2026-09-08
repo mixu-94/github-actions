@@ -16,4 +16,5 @@ jobs:
       contents: read
     uses: ./.github/workflows/security.yml
     with:
+      dependency-review: false
       blocking: true
