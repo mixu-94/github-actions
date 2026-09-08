@@ -1,0 +1,57 @@
+name: Node Release
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version used for the release
+        required: false
+        type: string
+        default: "20.x"
+      install-command:
+        description: Dependency installation command
+        required: false
+        type: string
+        default: HUSKY=0 npm ci
+      release-command:
+        description: Release command
+        required: false
+        type: string
+        default: npx semantic-release
+    secrets:
+      NPM_TOKEN:
+        required: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js ${{ inputs.node-version }}
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        env:
+          COMMAND: ${{ inputs.install-command }}
+        run: bash -lc "$COMMAND"
+
+      - name: Release
+        env:
+          COMMAND: ${{ inputs.release-command }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: bash -lc "$COMMAND"
