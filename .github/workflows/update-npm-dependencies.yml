@@ -1,0 +1,115 @@
+name: Update npm dependencies
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version used for dependency updates and validation
+        required: false
+        type: string
+        default: "20.x"
+      update-target:
+        description: npm-check-updates target level (patch or minor)
+        required: false
+        type: string
+        default: patch
+      run-tests:
+        description: Run npm test when a test script exists
+        required: false
+        type: boolean
+        default: true
+      run-typecheck:
+        description: Run npm run check-types when the script exists
+        required: false
+        type: boolean
+        default: true
+      run-build:
+        description: Run npm run build when the script exists
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  update:
+    name: Update npm dependencies
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate inputs
+        shell: bash
+        run: |
+          case "${{ inputs.update-target }}" in
+            patch|minor) ;;
+            *)
+              echo "Unsupported update-target: ${{ inputs.update-target }}"
+              echo "Allowed values: patch, minor"
+              exit 1
+              ;;
+          esac
+
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Use Node.js ${{ inputs.node-version }}
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+
+      - name: Verify current lockfile
+        run: npm ci
+
+      - name: Update dependencies
+        run: npx --yes npm-check-updates@22.2.9 -u --target "${{ inputs.update-target }}"
+
+      - name: Refresh package lock
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Verify updated dependency tree
+        run: npm ci
+
+      - name: Typecheck
+        if: ${{ inputs.run-typecheck }}
+        shell: bash
+        run: |
+          if npm pkg get scripts.check-types | grep -qv '^{}$'; then
+            npm run check-types
+          else
+            echo "No check-types script; skipping."
+          fi
+
+      - name: Test
+        if: ${{ inputs.run-tests }}
+        shell: bash
+        run: |
+          if npm pkg get scripts.test | grep -qv '^{}$'; then
+            npm test
+          else
+            echo "No test script; skipping."
+          fi
+
+      - name: Build
+        if: ${{ inputs.run-build }}
+        shell: bash
+        run: |
+          if npm pkg get scripts.build | grep -qv '^{}$'; then
+            npm run build
+          else
+            echo "No build script; skipping."
+          fi
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v8.1.1
+        with:
+          branch: chore/automated-dependency-updates
+          delete-branch: false
+          commit-message: "build: update ${{ inputs.update-target }} dependencies"
+          title: "build: update ${{ inputs.update-target }} dependencies"
+          body: |
+            Automated dependency refresh from `mixu-94/github-actions`.
+
+            - Update level: `${{ inputs.update-target }}`
+            - Node.js: `${{ inputs.node-version }}`
+            - Existing lockfile preserved and refreshed
+            - Clean install completed successfully
+            - Major dependency updates are intentionally excluded
