@@ -1,0 +1,103 @@
+name: Create or update pull request
+description: Create a dedicated automation branch, commit current changes, and create or update its pull request.
+
+inputs:
+  token:
+    description: GitHub token with contents and pull-request write permissions
+    required: true
+  branch:
+    description: Dedicated branch used by the automation
+    required: false
+    default: chore/automated-changes
+  base:
+    description: Pull request base branch
+    required: false
+    default: main
+  commit-message:
+    description: Commit message
+    required: true
+  title:
+    description: Pull request title
+    required: true
+  body:
+    description: Pull request body
+    required: false
+    default: Automated changes.
+
+outputs:
+  changed:
+    description: Whether a commit-worthy change existed
+    value: ${{ steps.pr.outputs.changed }}
+  pull-request-number:
+    description: Pull request number, when one exists
+    value: ${{ steps.pr.outputs.pull_request_number }}
+  pull-request-url:
+    description: Pull request URL, when one exists
+    value: ${{ steps.pr.outputs.pull_request_url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Create or update pull request
+      id: pr
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        PR_BRANCH: ${{ inputs.branch }}
+        PR_BASE: ${{ inputs.base }}
+        PR_COMMIT_MESSAGE: ${{ inputs.commit-message }}
+        PR_TITLE: ${{ inputs.title }}
+        PR_BODY: ${{ inputs.body }}
+      run: |
+        set -euo pipefail
+
+        if [[ -z "$(git status --porcelain)" ]]; then
+          echo "No changes detected."
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+          echo "pull_request_number=" >> "$GITHUB_OUTPUT"
+          echo "pull_request_url=" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "changed=true" >> "$GITHUB_OUTPUT"
+
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+        # Let git use the supplied GitHub token without putting it in the remote URL.
+        gh auth setup-git
+
+        # This branch belongs exclusively to the automation, so each run can
+        # rebuild it cleanly from the current checked-out base revision.
+        git switch -C "$PR_BRANCH"
+        git add -A
+        git commit -m "$PR_COMMIT_MESSAGE"
+        git push --force origin "HEAD:refs/heads/$PR_BRANCH"
+
+        existing_pr="$(gh pr list \
+          --head "$PR_BRANCH" \
+          --base "$PR_BASE" \
+          --state open \
+          --json number \
+          --jq '.[0].number // empty')"
+
+        if [[ -n "$existing_pr" ]]; then
+          gh pr edit "$existing_pr" \
+            --base "$PR_BASE" \
+            --title "$PR_TITLE" \
+            --body "$PR_BODY"
+          pr_number="$existing_pr"
+        else
+          pr_url="$(gh pr create \
+            --base "$PR_BASE" \
+            --head "$PR_BRANCH" \
+            --title "$PR_TITLE" \
+            --body "$PR_BODY")"
+          pr_number="$(gh pr view "$pr_url" --json number --jq '.number')"
+        fi
+
+        pr_url="$(gh pr view "$pr_number" --json url --jq '.url')"
+
+        echo "pull_request_number=$pr_number" >> "$GITHUB_OUTPUT"
+        echo "pull_request_url=$pr_url" >> "$GITHUB_OUTPUT"
+        echo "Pull request: $pr_url"
