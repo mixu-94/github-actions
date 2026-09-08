@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: mixu-94/github-actions/.github/workflows/ci-node.yml@d2326f4fd069304b4e74968471b83ca2c9142ae7 # v1 baseline
+    with:
+      build-node-versions: '["20.x","22.x"]'
+      test-node-version: "20.x"
+      install-command: npm install
+      test-command: ""
+      upload-test-results: false
