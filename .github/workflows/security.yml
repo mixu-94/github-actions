@@ -1,0 +1,70 @@
+name: Security checks
+
+on:
+  workflow_call:
+    inputs:
+      dependency-review:
+        description: Check dependency changes on pull requests
+        required: false
+        type: boolean
+        default: true
+      audit-workflows:
+        description: Audit GitHub Actions workflows with zizmor
+        required: false
+        type: boolean
+        default: true
+      blocking:
+        description: Fail the reusable workflow when a security check finds issues
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    if: ${{ inputs.dependency-review && github.event_name == 'pull_request' }}
+    name: Dependency review
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Review dependency changes
+        id: dependency_review
+        continue-on-error: ${{ !inputs.blocking }}
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+
+      - name: Explain non-blocking result
+        if: ${{ !inputs.blocking && steps.dependency_review.outcome == 'failure' }}
+        run: |
+          echo "Dependency Review found something worth checking."
+          echo "This workflow is currently in observation mode, so the PR is not blocked."
+
+  workflow-audit:
+    if: ${{ inputs.audit-workflows }}
+    name: GitHub Actions audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Audit workflows with zizmor
+        id: zizmor
+        continue-on-error: ${{ !inputs.blocking }}
+        uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+        with:
+          advanced-security: false
+          annotations: false
+          min-severity: medium
+          min-confidence: medium
+
+      - name: Explain non-blocking result
+        if: ${{ !inputs.blocking && steps.zizmor.outcome == 'failure' }}
+        run: |
+          echo "zizmor found GitHub Actions security findings."
+          echo "This workflow is currently in observation mode, so the PR is not blocked."
