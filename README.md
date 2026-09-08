@@ -20,83 +20,44 @@ With this repository:
 
 ### `ci-node.yml`
 
-Shared CI for Node.js and Next.js-style projects.
+Shared CI for Node.js and Next.js-style projects. It supports clean installs, multi-Node builds, commit validation, linting, type checks, unit tests, Codecov, Playwright, Storybook, E2E tests and test artifacts.
 
-It can run:
-
-- clean npm installs
-- builds across multiple Node.js versions
-- Conventional Commit validation
-- linting
-- TypeScript checks
-- unit tests
-- Codecov uploads
-- Playwright installation
-- Storybook tests
-- end-to-end tests
-- test-result artifact uploads
-
-Most commands are configurable inputs. This keeps the workflow reusable instead of coupling it to one specific app.
-
-Think of this workflow as the common project TÜV: every repository can be checked against the same basic quality rules.
+Think of this workflow as the common project TÜV: repositories can be checked against the same quality rules without copying the implementation.
 
 ### `release-node.yml`
 
-Shared semantic-release workflow.
-
-It performs a clean checkout, installs dependencies and runs the configured release command with only the permissions needed for GitHub releases, issues and pull requests.
-
-The caller decides when a release should happen. For example, a project can trigger it after CI completes and explicitly require `github.event.workflow_run.conclusion == 'success'`.
-
-This separation is useful because "how to release" stays centralized while "when to release" remains a project decision.
+Shared semantic-release workflow. The caller decides *when* release is allowed; this repository defines *how* the release is performed consistently.
 
 ### `security.yml`
 
-Shared security checks.
-
-Current checks:
-
-- GitHub Dependency Review for dependency changes in pull requests
-- `zizmor` auditing for GitHub Actions workflow security
-
-The default mode is non-blocking. Findings are visible but do not immediately prevent merges. This is useful for adopting security checks in older/reference projects without turning historical warnings into sudden build failures.
-
-Callers can later set `blocking: true` after findings have been reviewed.
+Shared security checks using GitHub Dependency Review and `zizmor`. Older/reference projects can start in observation mode and later opt into blocking security checks.
 
 ### `update-npm-dependencies.yml`
 
-Safely refreshes npm dependencies and opens a pull request.
-
-Default behaviour:
-
-- patch updates only
-- Node.js 20.x
-- keeps `package-lock.json` instead of deleting it
-- verifies the current and updated dependency tree with clean installs
-- runs `check-types` and `test` when those npm scripts exist
-- build verification is opt-in because builds often require project-specific environment variables
-- opens a pull request only after validation succeeds
-- never auto-merges dependency changes
-
-Minor updates can be enabled explicitly by the caller. Major updates are intentionally not supported by the automated workflow and should be reviewed manually.
+Conservative npm maintenance. Patch updates are the default, the lockfile is preserved and revalidated, tests/type checks can run before a PR is created, and major upgrades are kept manual.
 
 ## Composite actions
 
 ### `actions/create-pr`
 
-Small in-house action for the common "commit generated changes and open/update a pull request" use case.
+Small in-house action that detects generated changes, creates a dedicated automation branch, commits them and creates or updates a pull request with GitHub CLI.
 
-It uses Git and GitHub CLI (`gh`) instead of a large third-party implementation:
+The automation branch is disposable state and must not be used for manual development work.
 
-1. detect changes
-2. create/reset a dedicated automation branch
-3. commit the changes
-4. push the automation branch
-5. create a pull request, or update the existing one
+## Security model
 
-The automation branch is deliberately treated as disposable state and may be force-updated by this action. It should never be used for manual development work.
+This repository can indirectly receive powerful permissions from caller repositories, so it is treated as security-sensitive infrastructure.
 
-Why own this one? The use case is simple enough to understand and maintain ourselves, which reduces third-party code in a workflow that needs write permissions.
+Key rules:
+
+- third-party actions are pinned to full immutable commit SHAs
+- readable version numbers are kept as comments next to those SHAs
+- Dependabot checks GitHub Action updates weekly
+- permissions are kept as small as practical
+- workflow changes are audited by the repository's own security checks
+- write-capable automation never auto-merges changes
+
+See `SECURITY.md` for vulnerability reporting and `CONTRIBUTING.md` for contribution rules.
 
 ## Example: Node CI caller
 
@@ -114,7 +75,7 @@ permissions:
 
 jobs:
   ci:
-    uses: mixu-94/github-actions/.github/workflows/ci-node.yml@main
+    uses: mixu-94/github-actions/.github/workflows/ci-node.yml@<commit-sha>
     with:
       build-node-versions: '["20.x","22.x"]'
       validate-commits: true
@@ -124,8 +85,6 @@ jobs:
 ```
 
 ## Example: dependency updater caller
-
-The schedule belongs to the consuming repository:
 
 ```yaml
 name: Update dependencies
@@ -141,36 +100,29 @@ permissions:
 
 jobs:
   update:
-    uses: mixu-94/github-actions/.github/workflows/update-npm-dependencies.yml@main
-```
-
-Optional inputs:
-
-```yaml
-jobs:
-  update:
-    uses: mixu-94/github-actions/.github/workflows/update-npm-dependencies.yml@main
-    with:
-      node-version: "20.x"
-      update-target: patch
-      run-tests: true
-      run-typecheck: true
-      run-build: false
+    uses: mixu-94/github-actions/.github/workflows/update-npm-dependencies.yml@<commit-sha>
 ```
 
 ## Versioning
 
-During initial development the project callers use `@main` so improvements are easy to iterate on.
+Consumers should prefer a full commit SHA for maximum reproducibility. A moving major reference such as `v1` may also be provided as the human-friendly stable channel.
 
-Once these workflows have settled, callers should move to a stable version tag such as `@v1` or, for maximum supply-chain safety, a full commit SHA.
+The intended model is:
 
-## Third-party actions
+- `main` = current development/stable source
+- `v1` = latest compatible v1 line
+- full commit SHA = immutable production/reference pin
 
-We use upstream actions when they solve genuinely complicated problems better than a small local implementation.
+Breaking workflow interfaces require a new major version rather than silently changing existing callers.
 
-Security-sensitive third-party actions should preferably be pinned to full commit SHAs. Dependabot keeps GitHub Actions references up to date from this central repository.
+## Repository maintenance
 
-If we fork or copy code from another action, its license and attribution must be checked first.
+- Pull requests use a standard checklist.
+- Issues use structured bug/feature forms.
+- `CODEOWNERS` defines ownership.
+- The repository uses the MIT license.
+- Dependabot groups GitHub Action updates into a weekly maintenance PR.
+- Repository workflow changes run through blocking security checks.
 
 ## Design rules
 
@@ -181,4 +133,4 @@ If we fork or copy code from another action, its license and attribution must be
 5. Give workflows only the permissions they need.
 6. Centralize shared logic instead of copying it into every project.
 7. Prefer built-in GitHub/CLI functionality over unnecessary third-party actions.
-8. Adopt new security checks in observation mode before making them blocking.
+8. Adopt new security checks in observation mode before making them blocking in older projects.
