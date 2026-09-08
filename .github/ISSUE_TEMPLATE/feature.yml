@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest an improvement or reusable automation idea
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or repeated task
+      description: What recurring work should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the workflow/action behaviour you have in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: benefit
+    attributes:
+      label: Why centralize it?
+      description: Which repositories or workflows would benefit from sharing this logic?
+  - type: textarea
+    id: security
+    attributes:
+      label: Permissions and security considerations
+      description: Does this need write permissions, secrets, external services, or third-party actions?
