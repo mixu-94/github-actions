@@ -99,7 +99,7 @@ jobs:
           fi
 
       - name: Create or update Pull Request
-        uses: ./actions/create-pr
+        uses: mixu-94/github-actions/actions/create-pr@01b434313def95a3245fc15756bff5526dbee643 # pre-v1
         with:
           token: ${{ github.token }}
           branch: chore/automated-dependency-updates
