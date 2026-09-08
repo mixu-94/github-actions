@@ -155,7 +155,7 @@ jobs:
         run: bash -lc "$COMMAND"
 
       - name: Upload coverage to Codecov
-        if: ${{ inputs.upload-codecov && secrets.CODECOV_TOKEN != '' }}
+        if: ${{ inputs.upload-codecov }}
         uses: codecov/codecov-action@v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
