@@ -98,11 +98,12 @@ jobs:
             echo "No build script; skipping."
           fi
 
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v8.1.1
+      - name: Create or update Pull Request
+        uses: mixu-94/github-actions/actions/create-pr@main
         with:
+          token: ${{ github.token }}
           branch: chore/automated-dependency-updates
-          delete-branch: false
+          base: main
           commit-message: "build: update ${{ inputs.update-target }} dependencies"
           title: "build: update ${{ inputs.update-target }} dependencies"
           body: |
