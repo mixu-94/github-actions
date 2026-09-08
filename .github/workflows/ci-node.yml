@@ -1,0 +1,188 @@
+name: Node CI
+
+on:
+  workflow_call:
+    inputs:
+      build-node-versions:
+        description: JSON array of Node.js versions used for build verification
+        required: false
+        type: string
+        default: '["20.x","22.x"]'
+      test-node-version:
+        description: Node.js version used for linting, type checks and tests
+        required: false
+        type: string
+        default: "20.x"
+      install-command:
+        description: Dependency installation command
+        required: false
+        type: string
+        default: npm ci
+      build-command:
+        description: Build command; empty disables the build job
+        required: false
+        type: string
+        default: npm run build
+      lint-command:
+        description: Lint command; empty skips linting
+        required: false
+        type: string
+        default: npm run lint
+      typecheck-command:
+        description: Type-check command; empty skips type checking
+        required: false
+        type: string
+        default: npm run check-types
+      test-command:
+        description: Unit-test command; empty skips unit tests
+        required: false
+        type: string
+        default: npm run test
+      storybook-command:
+        description: Storybook test command; empty skips Storybook tests
+        required: false
+        type: string
+        default: ""
+      e2e-command:
+        description: End-to-end test command; empty skips E2E tests
+        required: false
+        type: string
+        default: ""
+      install-playwright:
+        description: Install Playwright browsers before Storybook/E2E tests
+        required: false
+        type: boolean
+        default: false
+      validate-commits:
+        description: Validate Conventional Commit messages on pull requests
+        required: false
+        type: boolean
+        default: false
+      upload-test-results:
+        description: Upload test-results/ even when tests fail
+        required: false
+        type: boolean
+        default: true
+      upload-codecov:
+        description: Upload coverage to Codecov
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      SENTRY_AUTH_TOKEN:
+        required: false
+      PERCY_TOKEN:
+        required: false
+      CODECOV_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: ${{ inputs.build-command != '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ${{ fromJSON(inputs.build-node-versions) }}
+
+    name: Build / Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        env:
+          COMMAND: ${{ inputs.install-command }}
+        run: bash -lc "$COMMAND"
+
+      - name: Build
+        env:
+          COMMAND: ${{ inputs.build-command }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: bash -lc "$COMMAND"
+
+  quality:
+    name: Lint, types and tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js ${{ inputs.test-node-version }}
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: ${{ inputs.test-node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        env:
+          COMMAND: ${{ inputs.install-command }}
+        run: bash -lc "$COMMAND"
+
+      - name: Validate pull-request commits
+        if: ${{ inputs.validate-commits && github.event_name == 'pull_request' }}
+        run: npx commitlint --from "${{ github.event.pull_request.base.sha }}" --to "${{ github.event.pull_request.head.sha }}" --verbose
+
+      - name: Lint
+        if: ${{ inputs.lint-command != '' }}
+        env:
+          COMMAND: ${{ inputs.lint-command }}
+        run: bash -lc "$COMMAND"
+
+      - name: Type check
+        if: ${{ inputs.typecheck-command != '' }}
+        env:
+          COMMAND: ${{ inputs.typecheck-command }}
+        run: bash -lc "$COMMAND"
+
+      - name: Unit tests
+        if: ${{ inputs.test-command != '' }}
+        env:
+          COMMAND: ${{ inputs.test-command }}
+        run: bash -lc "$COMMAND"
+
+      - name: Upload coverage to Codecov
+        if: ${{ inputs.upload-codecov && secrets.CODECOV_TOKEN != '' }}
+        uses: codecov/codecov-action@v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Install Playwright browsers
+        if: ${{ inputs.install-playwright && (inputs.storybook-command != '' || inputs.e2e-command != '') }}
+        run: npx playwright install --with-deps
+
+      - name: Storybook tests
+        if: ${{ inputs.storybook-command != '' }}
+        env:
+          COMMAND: ${{ inputs.storybook-command }}
+        run: bash -lc "$COMMAND"
+
+      - name: End-to-end tests
+        if: ${{ inputs.e2e-command != '' }}
+        env:
+          COMMAND: ${{ inputs.e2e-command }}
+          PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: bash -lc "$COMMAND"
+
+      - name: Upload test results
+        if: ${{ always() && inputs.upload-test-results }}
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: test-results-${{ inputs.test-node-version }}
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
